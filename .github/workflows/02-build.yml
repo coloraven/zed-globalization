@@ -121,16 +121,19 @@ jobs:
              IS_PRERELEASE="${{ github.event.client_payload.is_prerelease }}"
              IS_PRERELEASE="${IS_PRERELEASE:-false}"
              SHOULD_RELEASE="true"
+             ARCH="all"
+             PUBLISH_TARGET="release"
 
-          # === 2. 手动触发 / 可复用调用 (workflow_dispatch | workflow_call) ===
-          elif [ "${{ github.event_name }}" == "workflow_dispatch" ] || [ "${{ github.event_name }}" == "workflow_call" ]; then
+          # === 2. 手动触发 / 可复用调用 ===
+          # 注意：被 workflow_call 调用时，github.event_name 仍是调用方事件
+          # （如 push），不会变成 workflow_call，故不能只靠 event_name 判断。
+          else
              INPUT_VER="${{ inputs.version }}"
              LANG="${{ inputs.lang }}"
              LANG="${LANG:-zh-CN}"
              if [ -n "$INPUT_VER" ]; then
                 BASE_VER="$INPUT_VER"
                 echo "指定版本: $BASE_VER"
-                # 指定版本时，查询该版本是否为 pre-release
                 IS_PRERELEASE=$(curl -s "https://api.github.com/repos/zed-industries/zed/releases/tags/$INPUT_VER" | jq -r '.prerelease // false')
              else
                 LATEST_JSON=$(curl -s "https://api.github.com/repos/zed-industries/zed/releases?per_page=1")
@@ -140,15 +143,16 @@ jobs:
              fi
              # release=true 表示跑构建流水线；是否上传 GitHub Release 由 publish 控制
              SHOULD_RELEASE="${{ inputs.release }}"
+             SHOULD_RELEASE="${SHOULD_RELEASE:-true}"
+             ARCH="${{ inputs.arch }}"
+             ARCH="${ARCH:-all}"
+             PUBLISH_TARGET="${{ inputs.publish }}"
+             PUBLISH_TARGET="${PUBLISH_TARGET:-release}"
           fi
 
-          # 架构与发布去向（仅手动/可复用调用时有意义；链式触发默认全平台 + 发布）
-          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
-            ARCH="all"
-            PUBLISH_TARGET="release"
-          else
-            ARCH="${{ inputs.arch }}"
-            PUBLISH_TARGET="${{ inputs.publish }}"
+          if [ -z "$BASE_VER" ] || [ "$BASE_VER" = "null" ]; then
+            echo "::error::未能解析上游版本号"
+            exit 1
           fi
 
           # 解析逗号分隔架构 → 各平台布尔
@@ -175,6 +179,7 @@ jobs:
           echo "run_linux_arm64=$RUN_LARM" >> $GITHUB_OUTPUT
           echo "run_windows=$RUN_WIN" >> $GITHUB_OUTPUT
           echo "run_macos=$RUN_MAC" >> $GITHUB_OUTPUT
+          echo "should_release(raw)=$SHOULD_RELEASE publish=$PUBLISH_TARGET arch=$ARCH"
 
           # === Tag 去重：v0.222.4 → v0.222.4.1 → v0.222.4.2 ===
           VER="$BASE_VER"
