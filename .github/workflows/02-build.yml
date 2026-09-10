@@ -78,6 +78,8 @@ concurrency:
 
 env:
   ZED_REPO: https://github.com/zed-industries/zed.git
+  # fork 上可能没有 i18n 分支，回退到上游仓库拉取翻译数据
+  I18N_SOURCE_REPO: x6nux/zed-globalization
   # === 加速配置 ===
   RUSTC_WRAPPER: "sccache"
   CARGO_INCREMENTAL: "0"
@@ -228,11 +230,36 @@ jobs:
 
       - name: 从 i18n 分支获取翻译文件和禁止翻译列表
         id: get_trans
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch origin i18n
+          # origin 无 i18n 时（常见于 fork），回退到 I18N_SOURCE_REPO / 上游 parent
+          resolve_i18n_ref() {
+            if git ls-remote --exit-code --heads origin i18n >/dev/null 2>&1; then
+              git fetch --depth 1 origin i18n
+              echo "origin/i18n"
+              return
+            fi
+            SRC="${I18N_SOURCE_REPO}"
+            if [ -z "$SRC" ] || [ "$SRC" = "${{ github.repository }}" ]; then
+              SRC=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${{ github.repository }}" \
+                | jq -r '.parent.full_name // empty')
+            fi
+            SRC="${SRC:-x6nux/zed-globalization}"
+            echo "origin 无 i18n 分支，改从 ${SRC} 拉取" >&2
+            git fetch --depth 1 "https://github.com/${SRC}.git" i18n:refs/remotes/i18n-src/i18n
+            echo "i18n-src/i18n"
+          }
+
+          I18N_REF="$(resolve_i18n_ref)"
+          echo "使用 i18n ref: $I18N_REF"
+
           # 获取整个 i18n/ 目录用于版本查找
-          git checkout origin/i18n -- i18n/ 2>/dev/null || mkdir -p i18n
-          git checkout origin/i18n -- "config/do_not_translate.json"
+          git checkout "$I18N_REF" -- i18n/ 2>/dev/null || mkdir -p i18n
+          git checkout "$I18N_REF" -- "config/do_not_translate.json" 2>/dev/null \
+            || { mkdir -p config; echo '{}' > config/do_not_translate.json; }
 
           # 查找最佳翻译文件：精确版本 → 最近新版 → 最近旧版 → 旧版平铺
           TRANS=""
@@ -2495,9 +2522,23 @@ jobs:
 
       - name: 从 i18n 分支获取翻译文件
         id: release_trans
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch origin i18n
-          git checkout origin/i18n -- i18n/ 2>/dev/null || mkdir -p i18n
+          resolve_i18n_ref() {
+            if git ls-remote --exit-code --heads origin i18n >/dev/null 2>&1; then
+              git fetch --depth 1 origin i18n
+              echo "origin/i18n"
+              return
+            fi
+            SRC="${I18N_SOURCE_REPO:-x6nux/zed-globalization}"
+            echo "origin 无 i18n 分支，改从 ${SRC} 拉取" >&2
+            git fetch --depth 1 "https://github.com/${SRC}.git" i18n:refs/remotes/i18n-src/i18n
+            echo "i18n-src/i18n"
+          }
+
+          I18N_REF="$(resolve_i18n_ref)"
+          git checkout "$I18N_REF" -- i18n/ 2>/dev/null || mkdir -p i18n
 
           TRANS=""
           if [ -f "i18n/${BUILD_VERSION}/${TARGET_LANG}.json" ]; then
