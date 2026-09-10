@@ -1,0 +1,51 @@
+# Push 时仅构建 Windows 制品，上传到 Actions Artifacts，不创建 GitHub Release。
+# 复用 02-build.yml（arch=windows, publish=actions）。
+name: 05 Windows 构建 (push)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packaging/windows/**"
+      - ".github/installer/**"
+      - ".github/workflows/02-build.yml"
+      - ".github/workflows/05-build-windows-push.yml"
+      - "scripts/rebrand.py"
+      - "patch_agent_env.py"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "指定构建版本 (空则自动获取官方最新)"
+        type: string
+        default: ""
+      lang:
+        description: "目标语言"
+        type: choice
+        options:
+          - zh-CN
+          - zh-TW
+          - ja
+          - ko
+        default: zh-CN
+      skip_check:
+        description: "跳过编译检查（加速）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build-windows:
+    uses: ./.github/workflows/02-build.yml
+    with:
+      # should_release：跑构建流水线（与是否发 Release 无关）
+      release: true
+      version: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+      lang: ${{ github.event_name == 'workflow_dispatch' && inputs.lang || 'zh-CN' }}
+      skip_check: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_check || false }}
+      arch: windows
+      # 仅保留 Action Artifacts，不发 GitHub Release
+      publish: actions
+    secrets: inherit

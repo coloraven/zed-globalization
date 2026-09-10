@@ -5,6 +5,34 @@ on:
   repository_dispatch:
     types: [build-ready]
 
+  # 供其他 workflow 复用（如 push 仅构建 Windows）
+  workflow_call:
+    inputs:
+      release:
+        description: "是否执行构建流水线（false 则全部跳过）"
+        type: boolean
+        default: true
+      version:
+        description: "指定构建版本 (空则自动获取官方最新)"
+        type: string
+        default: ""
+      lang:
+        description: "目标语言"
+        type: string
+        default: zh-CN
+      skip_check:
+        description: "跳过编译检查（加速）"
+        type: boolean
+        default: false
+      arch:
+        description: "构建架构，逗号分隔可多选"
+        type: string
+        default: all
+      publish:
+        description: "产物去向：release=发布到 Releases；actions=仅保留在 Action Artifacts"
+        type: string
+        default: release
+
   # 手动触发
   workflow_dispatch:
     inputs:
@@ -44,6 +72,7 @@ permissions:
   actions: write
 
 concurrency:
+  # push 复用调用与正式发布共用队列，避免抢同一批 runner/sccache
   group: build
   cancel-in-progress: false
 
@@ -93,26 +122,27 @@ jobs:
              IS_PRERELEASE="${IS_PRERELEASE:-false}"
              SHOULD_RELEASE="true"
 
-          # === 2. 手动触发 (workflow_dispatch) ===
-          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          # === 2. 手动触发 / 可复用调用 (workflow_dispatch | workflow_call) ===
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ] || [ "${{ github.event_name }}" == "workflow_call" ]; then
              INPUT_VER="${{ inputs.version }}"
              LANG="${{ inputs.lang }}"
              LANG="${LANG:-zh-CN}"
              if [ -n "$INPUT_VER" ]; then
                 BASE_VER="$INPUT_VER"
-                echo "手动指定版本: $BASE_VER"
-                # 手动指定版本时，查询该版本是否为 pre-release
+                echo "指定版本: $BASE_VER"
+                # 指定版本时，查询该版本是否为 pre-release
                 IS_PRERELEASE=$(curl -s "https://api.github.com/repos/zed-industries/zed/releases/tags/$INPUT_VER" | jq -r '.prerelease // false')
              else
                 LATEST_JSON=$(curl -s "https://api.github.com/repos/zed-industries/zed/releases?per_page=1")
                 BASE_VER=$(echo "$LATEST_JSON" | jq -r '.[0].tag_name')
                 IS_PRERELEASE=$(echo "$LATEST_JSON" | jq -r '.[0].prerelease')
-                echo "手动触发，自动获取最新: $BASE_VER (pre-release: $IS_PRERELEASE)"
+                echo "自动获取最新: $BASE_VER (pre-release: $IS_PRERELEASE)"
              fi
+             # release=true 表示跑构建流水线；是否上传 GitHub Release 由 publish 控制
              SHOULD_RELEASE="${{ inputs.release }}"
           fi
 
-          # 架构与发布去向（仅手动触发时有意义；链式触发默认全平台 + 发布）
+          # 架构与发布去向（仅手动/可复用调用时有意义；链式触发默认全平台 + 发布）
           if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
             ARCH="all"
             PUBLISH_TARGET="release"
@@ -1032,14 +1062,16 @@ jobs:
             Expand-Archive $ZipPath -DestinationPath "extracted\$Arch" -Force
             $exePath = Resolve-Path "extracted\$Arch\$ExeSubPath"
             $cliPath = Resolve-Path "extracted\$Arch\$CliSubPath"
+            $licenseRtf = Resolve-Path ".github\installer\license.rtf"
             candle -arch $Arch `
               "-dAppVersion=$msiVer" `
               "-dSourceExe=$exePath" `
               "-dSourceCli=$cliPath" `
               "-dUpgradeCode=$UpgradeCode" `
+              "-dLicenseRtf=$licenseRtf" `
               .github\installer\zedg.wxs `
               -o "$Arch.wixobj"
-            light "$Arch.wixobj" -o $OutFile
+            light "$Arch.wixobj" -ext WixUIExtension -o $OutFile
           }
 
           Build-Msi `

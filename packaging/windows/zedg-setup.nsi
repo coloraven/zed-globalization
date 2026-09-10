@@ -5,15 +5,19 @@
 #   2. 可选组件"覆盖官方 Zed 安装"(默认不勾选):
 #      - 将官方 %LOCALAPPDATA%\Programs\Zed\zed.exe 备份为 zed.exe.official.bak
 #      - 复制 ZedG.exe 覆盖之 (生态工具/git difftool/终端 `zed` 命令自动识别)
-#   3. 开始菜单/桌面快捷方式, PATH 注册(可选), 卸载完整还原
+#   3. 可选资源管理器右键菜单「通过 ZedG 打开」(文件默认勾选; 文件夹默认不勾选)
+#   4. 开始菜单/桌面快捷方式, PATH 注册(可选), 卸载完整还原
 
 !define APP_NAME      "ZedG"
 !define APP_PUBLISHER "zed-globalization"
 !define OFFICIAL_DIR  "$LOCALAPPDATA\Programs\Zed"
 !define OFFICIAL_EXE  "${OFFICIAL_DIR}\zed.exe"
 !define BAK_FILE      "${OFFICIAL_DIR}\zed.exe.official.bak"
+; 与官方 Zed 的 shell 键名区分, 避免共存时互相覆盖
+!define SHELL_REG_NAME "ZedG"
 
 !include "MUI2.nsh"
+!include "LogicLib.nsh"
 !include "FileFunc.nsh"
 
 ; Unicode 安装程序: 字符串以 UTF-16 存储, 不随编译机/用户系统代码页变化。
@@ -92,6 +96,47 @@ Section "将安装目录加入 PATH 环境变量" SEC_PATH
 SectionEnd
 
 ; ---------------------------------------------------------------------------
+; 段: 文件右键菜单 (可选, 默认开启 — 对齐官方 Inno addcontextmenufiles)
+; Win10 显示在经典菜单; Win11 出现在「显示更多选项」中
+; ---------------------------------------------------------------------------
+Section "将「通过 ZedG 打开」添加到文件右键菜单" SEC_CTX_FILES
+  Call GetContextMenuTitle
+  Pop $R9
+  WriteRegStr HKCU "Software\Classes\*\shell\${SHELL_REG_NAME}" "" "$R9"
+  WriteRegStr HKCU "Software\Classes\*\shell\${SHELL_REG_NAME}" "Icon" "$INSTDIR\ZedG.exe"
+  WriteRegStr HKCU "Software\Classes\*\shell\${SHELL_REG_NAME}\command" "" \
+    '"$INSTDIR\ZedG.exe" "%1"'
+  WriteRegStr HKCU "Software\${APP_NAME}" "ContextMenuFiles" "1"
+  DetailPrint "已注册文件右键菜单: $R9"
+SectionEnd
+
+; ---------------------------------------------------------------------------
+; 段: 文件夹/盘符右键菜单 (可选, 默认关闭 — 对齐官方 addcontextmenufolders)
+; ---------------------------------------------------------------------------
+Section /o "将「通过 ZedG 打开」添加到文件夹右键菜单" SEC_CTX_FOLDERS
+  Call GetContextMenuTitle
+  Pop $R9
+
+  WriteRegStr HKCU "Software\Classes\directory\shell\${SHELL_REG_NAME}" "" "$R9"
+  WriteRegStr HKCU "Software\Classes\directory\shell\${SHELL_REG_NAME}" "Icon" "$INSTDIR\ZedG.exe"
+  WriteRegStr HKCU "Software\Classes\directory\shell\${SHELL_REG_NAME}\command" "" \
+    '"$INSTDIR\ZedG.exe" "%V"'
+
+  WriteRegStr HKCU "Software\Classes\directory\background\shell\${SHELL_REG_NAME}" "" "$R9"
+  WriteRegStr HKCU "Software\Classes\directory\background\shell\${SHELL_REG_NAME}" "Icon" "$INSTDIR\ZedG.exe"
+  WriteRegStr HKCU "Software\Classes\directory\background\shell\${SHELL_REG_NAME}\command" "" \
+    '"$INSTDIR\ZedG.exe" "%V"'
+
+  WriteRegStr HKCU "Software\Classes\Drive\shell\${SHELL_REG_NAME}" "" "$R9"
+  WriteRegStr HKCU "Software\Classes\Drive\shell\${SHELL_REG_NAME}" "Icon" "$INSTDIR\ZedG.exe"
+  WriteRegStr HKCU "Software\Classes\Drive\shell\${SHELL_REG_NAME}\command" "" \
+    '"$INSTDIR\ZedG.exe" "%V"'
+
+  WriteRegStr HKCU "Software\${APP_NAME}" "ContextMenuFolders" "1"
+  DetailPrint "已注册文件夹/盘符右键菜单: $R9"
+SectionEnd
+
+; ---------------------------------------------------------------------------
 ; 段: 覆盖官方 Zed 安装 (可选, 默认关闭 — issue #37 用户诉求)
 ; ---------------------------------------------------------------------------
 Section /o "覆盖官方 Zed 安装 (生态兼容, 可随时还原)" SEC_OVERRIDE
@@ -121,6 +166,26 @@ Section /o "覆盖官方 Zed 安装 (生态兼容, 可随时还原)" SEC_OVERRID
   done_override:
 SectionEnd
 
+; 组件页悬停说明 (须在 Section 定义之后)
+LangString DESC_SEC_MAIN ${LANG_SIMPCHINESE} "安装 ZedG 主程序与命令行工具"
+LangString DESC_SEC_MAIN ${LANG_ENGLISH} "Install ZedG editor and CLI"
+LangString DESC_SEC_PATH ${LANG_SIMPCHINESE} "将 bin 目录加入用户 PATH，便于在终端调用 ZedG"
+LangString DESC_SEC_PATH ${LANG_ENGLISH} "Add the bin directory to your user PATH"
+LangString DESC_SEC_CTX_FILES ${LANG_SIMPCHINESE} "在资源管理器文件右键菜单中添加「通过 ZedG 打开」"
+LangString DESC_SEC_CTX_FILES ${LANG_ENGLISH} "Add 'Open with ZedG' to the file Explorer context menu"
+LangString DESC_SEC_CTX_FOLDERS ${LANG_SIMPCHINESE} "在文件夹、空白处与盘符右键菜单中添加「通过 ZedG 打开」"
+LangString DESC_SEC_CTX_FOLDERS ${LANG_ENGLISH} "Add 'Open with ZedG' to folder, background and drive context menus"
+LangString DESC_SEC_OVERRIDE ${LANG_SIMPCHINESE} "用 ZedG 覆盖官方 Zed 安装目录中的 zed.exe（可卸载还原）"
+LangString DESC_SEC_OVERRIDE ${LANG_ENGLISH} "Replace official Zed's zed.exe with ZedG (restored on uninstall)"
+
+!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_MAIN} $(DESC_SEC_MAIN)
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_PATH} $(DESC_SEC_PATH)
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_CTX_FILES} $(DESC_SEC_CTX_FILES)
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_CTX_FOLDERS} $(DESC_SEC_CTX_FOLDERS)
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_OVERRIDE} $(DESC_SEC_OVERRIDE)
+!insertmacro MUI_FUNCTION_DESCRIPTION_END
+
 ; --- 覆盖与 PATH 的选择状态管理 ---
 Var OverrideSelected
 
@@ -134,6 +199,15 @@ Function .onSelChange
   IntOp $0 $0 & 1
   StrCpy $OverrideSelected "$0"
   Pop $0
+FunctionEnd
+
+; 按安装向导语言选择右键菜单显示文本 (对齐官方 OpenWithContextMenu)
+Function GetContextMenuTitle
+  ${If} $LANGUAGE == ${LANG_SIMPCHINESE}
+    Push "通过 ZedG 打开"
+  ${Else}
+    Push "Open with ZedG"
+  ${EndIf}
 FunctionEnd
 
 ; ---------------------------------------------------------------------------
@@ -166,6 +240,13 @@ Section "Uninstall"
   ; 移除 PATH
   Push "$INSTDIR\bin"
   Call un.RemoveFromPath
+
+  ; 移除资源管理器右键菜单 (文件 / 文件夹 / 背景 / 盘符)
+  DeleteRegKey HKCU "Software\Classes\*\shell\${SHELL_REG_NAME}"
+  DeleteRegKey HKCU "Software\Classes\directory\shell\${SHELL_REG_NAME}"
+  DeleteRegKey HKCU "Software\Classes\directory\background\shell\${SHELL_REG_NAME}"
+  DeleteRegKey HKCU "Software\Classes\Drive\shell\${SHELL_REG_NAME}"
+  DeleteRegKey HKCU "Software\Classes\${SHELL_REG_NAME}ContextMenu"
 
   ; 删除主程序 (卸载器自身除外)
   Delete "$INSTDIR\ZedG.exe"

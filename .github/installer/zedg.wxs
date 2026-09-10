@@ -11,6 +11,10 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of ZedG is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
+    <!-- Feature tree: toggle context-menu options like the official Inno tasks -->
+    <UIRef Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLFOLDER" Name="ZedG">
@@ -52,10 +56,123 @@
       </Component>
     </ComponentGroup>
 
-    <Feature Id="Main" Title="ZedG" Level="1">
+    <!--
+      Explorer context menu — classic HKCU shell verbs (same keys as official
+      Inno on Win10). Win11 shows them under "Show more options".
+      Files: Level 1 = installed by default (mirrors official checkbox default).
+      Folders: Level 2 = off unless ADDLOCAL includes ContextMenuFolders.
+    -->
+    <ComponentGroup Id="ContextMenuFileComponents" Directory="INSTALLFOLDER">
+      <Component Id="CtxMenuFiles" Guid="*">
+        <RegistryValue Root="HKCU"
+                       Key="Software\ZedG"
+                       Name="ContextMenuFiles"
+                       Type="string"
+                       Value="1"
+                       KeyPath="yes" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\*\shell\ZedG"
+                       Type="string"
+                       Value="通过 ZedG 打开" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\*\shell\ZedG"
+                       Name="Icon"
+                       Type="string"
+                       Value="[INSTALLFOLDER]ZedG.exe" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\*\shell\ZedG\command"
+                       Type="string"
+                       Value="&quot;[INSTALLFOLDER]ZedG.exe&quot; &quot;%1&quot;" />
+        <RemoveRegistryKey Root="HKCU"
+                           Key="Software\Classes\*\shell\ZedG"
+                           Action="removeOnUninstall" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="ContextMenuFolderComponents" Directory="INSTALLFOLDER">
+      <Component Id="CtxMenuFolders" Guid="*">
+        <RegistryValue Root="HKCU"
+                       Key="Software\ZedG"
+                       Name="ContextMenuFolders"
+                       Type="string"
+                       Value="1"
+                       KeyPath="yes" />
+
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\directory\shell\ZedG"
+                       Type="string"
+                       Value="通过 ZedG 打开" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\directory\shell\ZedG"
+                       Name="Icon"
+                       Type="string"
+                       Value="[INSTALLFOLDER]ZedG.exe" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\directory\shell\ZedG\command"
+                       Type="string"
+                       Value="&quot;[INSTALLFOLDER]ZedG.exe&quot; &quot;%V&quot;" />
+
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\directory\background\shell\ZedG"
+                       Type="string"
+                       Value="通过 ZedG 打开" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\directory\background\shell\ZedG"
+                       Name="Icon"
+                       Type="string"
+                       Value="[INSTALLFOLDER]ZedG.exe" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\directory\background\shell\ZedG\command"
+                       Type="string"
+                       Value="&quot;[INSTALLFOLDER]ZedG.exe&quot; &quot;%V&quot;" />
+
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\Drive\shell\ZedG"
+                       Type="string"
+                       Value="通过 ZedG 打开" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\Drive\shell\ZedG"
+                       Name="Icon"
+                       Type="string"
+                       Value="[INSTALLFOLDER]ZedG.exe" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Classes\Drive\shell\ZedG\command"
+                       Type="string"
+                       Value="&quot;[INSTALLFOLDER]ZedG.exe&quot; &quot;%V&quot;" />
+
+        <RemoveRegistryKey Root="HKCU"
+                           Key="Software\Classes\directory\shell\ZedG"
+                           Action="removeOnUninstall" />
+        <RemoveRegistryKey Root="HKCU"
+                           Key="Software\Classes\directory\background\shell\ZedG"
+                           Action="removeOnUninstall" />
+        <RemoveRegistryKey Root="HKCU"
+                           Key="Software\Classes\Drive\shell\ZedG"
+                           Action="removeOnUninstall" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="ZedG" Description="ZedG editor and CLI" Level="1"
+             Display="expand" ConfigurableDirectory="INSTALLFOLDER">
       <ComponentGroupRef Id="MainComponents" />
       <ComponentGroupRef Id="CliComponents" />
       <ComponentGroupRef Id="DesktopShortcutComponents" />
+
+      <Feature Id="ContextMenuFiles"
+               Title="Add Open with ZedG to file context menu"
+               Description="将「通过 ZedG 打开」添加到文件右键菜单"
+               Level="1"
+               AllowAdvertise="no">
+        <ComponentGroupRef Id="ContextMenuFileComponents" />
+      </Feature>
+
+      <Feature Id="ContextMenuFolders"
+               Title="Add Open with ZedG to folder context menu"
+               Description="将「通过 ZedG 打开」添加到文件夹右键菜单"
+               Level="2"
+               AllowAdvertise="no">
+        <ComponentGroupRef Id="ContextMenuFolderComponents" />
+      </Feature>
     </Feature>
 
   </Product>
